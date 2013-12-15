@@ -50,6 +50,10 @@ unknown_json_data() ->
     ["{\"one\":1,\"two\":2}",
      [{<<"one">>, 1},{<<"two">>,2}]].
 
+simple_json_undefined_data() ->
+    ["{\"one\":1}",
+     #simple{one = 1}].
+
 deep_json_data() ->
     Simple = "{\"simple\":{\"one\":1,\"two\":2}",
     Deep = Simple++"}",
@@ -111,6 +115,14 @@ to_json_simple_test() ->
 
     New = json_rec:to_rec(mochijson2:decode(Sjson),json_rec_tests,new(<<"simple">>)),
     ?assertEqual(Rec,New).
+
+to_json_simple_undefined_test() ->
+    [Json, Rec] = simple_json_undefined_data(),
+
+    ErlJson = json_rec:to_json(Rec, json_rec_tests, undefined),
+    Conv = binary_to_list(list_to_binary(mochijson2:encode(ErlJson))),
+
+    ?assertEqual(Json,Conv).
 
 to_json_deep_test() ->
     [_Json, Rec] = deep_json_data(),

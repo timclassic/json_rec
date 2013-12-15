@@ -31,7 +31,7 @@
 
 -export([
          to_rec/3,
-         to_json/2
+         to_json/2, to_json/3
         ]).
 
 -include("json_rec_types.hrl").
@@ -40,50 +40,60 @@
 %% note: I am using tuple() for record, since this is a generic record
 -spec to_json(Record :: tuple(), Module :: [atom()]) -> {struct, proplist()};
              (Record :: tuple(), Module :: atom())  -> {struct, proplist()}.
+to_json(Record, Module) ->
+    to_json2(Record, Module, false).
 
-to_json(Record, Module) when is_list(Module) ->
+-spec to_json(Record :: tuple(), Module :: [atom()], atom()) -> {struct, proplist()};
+             (Record :: tuple(), Module :: atom(), atom())  -> {struct, proplist()}.
+to_json(Record, Module, Ignore) ->
+    to_json2(Record, Module, {true, Ignore}).
+
+to_json2(Record, Module, Ignore) when is_list(Module) ->
     Fields = module_rec_fields(Module,Record),
-    Pl = rec_keys(Fields, Record, Module, []),
+    Pl = rec_keys(Fields, Record, Module, Ignore, []),
     {struct, Pl};
 
-to_json(Record, Module) ->
-    Fields = module_rec_fields([Module],Record),
-    Pl = rec_keys(Fields,Record,[Module],[]),
-    {struct, Pl}.
+to_json2(Record, Module, Opts) ->
+    to_json2(Record, [Module], Opts).
 
 
-rec_keys([], _Record, _Module, Acc) -> Acc;
-rec_keys([Field|Rest],Record,Module,Acc) ->
+rec_keys([], _Record, _Module, _Ignore, Acc) -> Acc;
+rec_keys([Field|Rest],Record,Module,Ignore,Acc) ->
     Value = module_get(Module, Field, Record),
-    Key = list_to_binary(atom_to_list(Field)),
-    JsonValue = field_value(Value,Module,[]),
-    rec_keys(Rest, Record, Module,[{Key,JsonValue}|Acc]).
+    case {Ignore, Value} of
+        {{true, IgnoredValue}, IgnoredValue} ->
+            rec_keys(Rest, Record, Module,Ignore,Acc);
+        _ ->
+            Key = list_to_binary(atom_to_list(Field)),
+            JsonValue = field_value(Value,Module,Ignore,[]),
+            rec_keys(Rest, Record, Module,Ignore,[{Key,JsonValue}|Acc])
+    end.
 
-field_value(Value, Module, _Acc) when is_tuple(Value) ->
+field_value(Value, Module, Ignore, _Acc) when is_tuple(Value) ->
     case module_has_rec(Module, Value, false) of
         false ->
             Value;
         _M when is_atom(_M) ->
-            to_json(Value,Module)
+            to_json2(Value,Module,Ignore)
     end;
-field_value(Value, _Module, _Acc) when Value =:= null;
+field_value(Value, _Module, _Ignore, _Acc) when Value =:= null;
                                        Value =:= false;
                                        Value =:= true ->
     Value;
-field_value(Value, _Module, _Acc) when is_atom(Value) ->
+field_value(Value, _Module, _Ignore, _Acc) when is_atom(Value) ->
     list_to_binary(atom_to_list(Value));
 
-field_value([],_Module, Acc)  -> lists:reverse(Acc);
-field_value([{_,_}|_] = Pl, Module, Acc) ->
+field_value([],_Module, _Ignore, Acc)  -> lists:reverse(Acc);
+field_value([{_,_}|_] = Pl, Module, Ignore, Acc) ->
     %% it is a proplist, make it a dict
     {struct, [{Key, Value} || {Key, V2} <- Pl,
                           begin
-                              Value = field_value(V2, Module, Acc),
+                              Value = field_value(V2, Module, Ignore, Acc),
                               true
                           end]};
 
-field_value([Value|Rest], Module, Acc) ->
-    NewValue = case field_value(Value,Module,[]) of
+field_value([Value|Rest], Module, Ignore, Acc) ->
+    NewValue = case field_value(Value,Module,Ignore,[]) of
                    IsRec when is_tuple(IsRec),
                               is_atom(element(1,Value)) ->
                        %% this returned a record, so get the first
@@ -95,8 +105,8 @@ field_value([Value|Rest], Module, Acc) ->
                    NotRec ->
                        NotRec
                end,
-    field_value(Rest, Module,[NewValue|Acc]);
-field_value(Value,_Module,_Acc) ->
+    field_value(Rest, Module,Ignore,[NewValue|Acc]);
+field_value(Value,_Module,_Ignore,_Acc) ->
     Value.
 
 
