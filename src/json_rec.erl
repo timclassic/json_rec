@@ -137,6 +137,8 @@ to_rec({struct, Pl} = _Json, Module, Rec) when is_list(Module) ->
 to_rec({struct, Pl} = _Json, Module, Rec) ->
     keys_rec(Pl, [Module], Rec).
 
+keys_rec({Key, Value}, Module, Rec) ->
+    keys_rec([{Key, Value}], Module, Rec);
 keys_rec([], _Module, Rec) -> Rec;
 keys_rec([{Key, {struct, Pl}}|Rest], Module, Rec) ->
     Field = list_to_atom(binary_to_list(Key)),
